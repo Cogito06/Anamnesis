@@ -33,7 +33,14 @@ else
   printf '%s\n' "$entries"
 fi
 
-open=$(grep -rh '^- \[ \]' "$cwd/$CAIRN_DIR/fragments" 2>/dev/null | head -n 30)
+# 遗留问题常常跨多行写。只 grep 首行会把它截成残句（以逗号结尾那种），
+# 注入进去模型会以为问题就这么多。所以把「- [ ] 开头 + 后续缩进行」合成一行。
+open=$(awk '
+  /^- \[ \] / { if (buf != "") print buf; buf = $0; next }
+  /^[ 	]+[^ 	]/ { if (buf != "") { sub(/^[ 	]+/, ""); buf = buf " " $0 } ; next }
+  { if (buf != "") { print buf; buf = "" } }
+  END { if (buf != "") print buf }
+' "$cwd/$CAIRN_DIR/fragments"/*.md 2>/dev/null   | awk '{ if (length($0) > 240) print substr($0, 1, 240) "…（还有，见片段全文）"; else print }'   | head -n 30)
 if [ -n "$open" ]; then
   echo
   echo "## 未解决的遗留问题"
