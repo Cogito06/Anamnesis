@@ -35,9 +35,12 @@
 ~/.claude/                              安装一次，全局生效
 ├── settings.json                       hooks 注册（增量合并，未覆盖原有配置）
 ├── skills/cairn/
-│   ├── SKILL.md                        /cairn 命令（104 行）
+│   ├── SKILL.md                        /cairn 命令
 │   ├── assets/fragment-template.md     片段模板
 │   └── scripts/rebuild_index.py        从片段推导 INDEX.md
+├── anamnesis/graph/                    知识图谱工具（独立于 skill）
+│   ├── graph.py
+│   └── template.html
 ├── hooks/
 │   ├── cairn-lib.sh                    公共函数
 │   ├── cairn-session-start.sh          开局注入索引
@@ -221,7 +224,7 @@ refs:
 
 ## 3.5 知识图谱
 
-`scripts/graph.py` 从 `fragments/` 推导出 `cairn/graph.html`——单文件、零外部依赖、
+`src/graph/graph.py` 从 `fragments/` 推导出 `cairn/graph.html`——单文件、零外部依赖、
 力导向布局，浏览器直接打开。和 `rebuild_index.py` 同一个模式：随时可重跑，不联网。
 
 图能看出索引看不出的四件事：**哪些簇是孤岛**、**哪些簇之间只有一根线连着**、

@@ -13,8 +13,20 @@
 """
 import json, re, sys, pathlib
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from rebuild_index import parse_frontmatter, scalar, LINK_RE   # 不重复造解析器
+# 解析器复用 rebuild_index 的，不重复造——schema 改动只需改一处。
+# 仓库布局和安装后的布局不同，两种都要找得到。
+import os
+_HERE = pathlib.Path(__file__).resolve().parent
+_HOME = pathlib.Path(os.environ.get("CLAUDE_HOME") or (pathlib.Path.home() / ".claude"))
+for _c in (_HERE,                                       # 并排放时
+           _HERE.parent / "skills" / "cairn" / "scripts",   # 仓库布局
+           _HOME / "skills" / "cairn" / "scripts"):          # 安装后
+    if (_c / "rebuild_index.py").exists():
+        sys.path.insert(0, str(_c))
+        break
+else:
+    sys.exit("找不到 rebuild_index.py（Anamnesis 装好了吗？）")
+from rebuild_index import parse_frontmatter, scalar, LINK_RE
 
 for _s in (sys.stdout, sys.stderr):
     try:
@@ -123,7 +135,7 @@ def main():
     out = out or root / "graph.html"
 
     nodes, edges, clusters = collect(root)
-    tpl = (pathlib.Path(__file__).resolve().parent / "graph_template.html").read_text(encoding="utf-8")
+    tpl = (_HERE / "template.html").read_text(encoding="utf-8")
     html = tpl.replace("/*__DATA__*/", json.dumps(
         {"nodes": nodes, "edges": edges, "clusters": clusters,
          "repo": root.parent.name}, ensure_ascii=False))

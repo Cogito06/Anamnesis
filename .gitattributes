@@ -3,3 +3,8 @@
 *.sh  text eol=lf
 *.py  text eol=lf
 *.md  text eol=lf
+
+# 二进制不能过换行符转换，否则图片会被损坏
+*.jpg binary
+*.png binary
+*.pdf binary

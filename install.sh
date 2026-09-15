@@ -18,12 +18,13 @@ for cand in python3 python py; do
 done
 [ -n "$PY" ] || { echo "找不到可用的 Python（合并 settings.json 需要，只用标准库）"; exit 1; }
 
-mkdir -p "$DEST/skills" "$DEST/hooks" "$DEST/anamnesis-state"
-rm -rf "$DEST/skills/cairn"
+mkdir -p "$DEST/skills" "$DEST/hooks" "$DEST/anamnesis-state" "$DEST/anamnesis"
+rm -rf "$DEST/skills/cairn" "$DEST/anamnesis/graph"
 cp -r "$SRC/skills/cairn" "$DEST/skills/cairn"
+cp -r "$SRC/graph" "$DEST/anamnesis/graph"
 cp "$SRC/hooks/"cairn-*.sh "$DEST/hooks/"
 chmod +x "$DEST/hooks/"cairn-*.sh
-echo "已安装 skill 与 hooks 到 $DEST"
+echo "已安装 skill、图谱工具与 hooks 到 $DEST"
 
 # hooks 配置里要写绝对路径。Git Bash 下 /c/... 形式换成 C:/... 更稳妥。
 if command -v cygpath >/dev/null 2>&1; then
@@ -72,4 +73,7 @@ cat <<'MSG'
 下一步：
   1. 到任意学习仓库里开一个新会话（hooks 会热重载，但 SessionStart 要新会话才触发）
   2. 打 /cairn，它会问你要不要初始化 cairn/ 目录
+  3. 攒下几条片段后，在学习仓库根目录跑：
+       python ~/.claude/anamnesis/graph/graph.py cairn
+     生成 cairn/graph.html，浏览器打开即可
 MSG

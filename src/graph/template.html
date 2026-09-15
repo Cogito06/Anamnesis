@@ -389,7 +389,15 @@ function draw() {
   }
 }
 
+// 标签页切到后台就停：物理不冻结是为了观感，但没人在看的时候
+// 每秒 60 帧纯属浪费电。回到前台自动接上。
+let hidden = false;
+document.addEventListener('visibilitychange', () => {
+  hidden = document.hidden;
+  if (!hidden) requestAnimationFrame(loop);
+});
 function loop() {
+  if (hidden) return;
   step();
   // 物理永不停：完全冻结的图看起来是死的，轻微游走才有生命感。
   // 取景平滑跟随，除非用户自己动过视图。
