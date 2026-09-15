@@ -56,7 +56,7 @@ button:hover{border-color:var(--ink-3)}
 .legend .row{display:flex;align-items:center;gap:8px;margin:4px 0}
 .legend .dot{width:10px;height:10px;border-radius:50%;flex:none}
 .legend .ring{width:12px;height:12px;border-radius:50%;flex:none;
-  border:2px solid var(--ink-2);background:transparent}
+  border:1.2px solid var(--graph-node-1);background:transparent;opacity:.75}
 .legend .seg{width:22px;height:0;flex:none;border-top:2px dashed var(--graph-line-bridge)}
 .legend .n{color:var(--ink-3);margin-left:auto;font-variant-numeric:tabular-nums}
 .legend hr{border:0;border-top:1px solid var(--line);margin:8px 0}
@@ -115,17 +115,32 @@ document.getElementById('sub').textContent =
 /* ---------- 布局 ----------
    简单的 Fruchterman–Reingold。节点数是几十量级，O(n²) 斥力足够；
    上 Barnes–Hut 属于为不存在的规模做优化。 */
-const R = Math.max(260, Math.sqrt(N.length) * 130);
+const R = Math.max(200, Math.sqrt(N.length) * 58);   // 自然边长。太大时 120 个节点会摊到 4000 单位宽
+const MAXDEG = Math.max(1, ...N.map(n => n.deg));
 N.forEach((n, i) => {
   const a = i * 2.399963;                 // 黄金角散布，避免初始对称造成的死锁
   const rad = R * 0.5 * Math.sqrt(i / N.length + 0.15);
   n.x = Math.cos(a) * rad; n.y = Math.sin(a) * rad;
   n.vx = 0; n.vy = 0;
-  n.r = 5 + Math.min(9, Math.sqrt(n.deg) * 3.4);
+  // 尺寸按本图自己的最高度数归一，这样无论图多大都吃满整个范围。
+  // 固定上限会让大图里所有节点看起来一样大，层次就没了。
+  n.r = (n.ghost ? 3 : 4) + 10 * Math.sqrt(n.deg / MAXDEG);
+  n.ph = (i * 2.399963) % 6.2832;         // 游走相位
+  n.a = 1;                                // 当前透明度，用于平滑过渡
 });
 const K = R / Math.sqrt(Math.max(N.length, 2));
-const CENTER = 1.15 / 27;   // 平衡点 ≈ 3K
-let heat = 1, dragging = null;
+// 向心系数必须随 N 变：外圈节点受到的是**所有** N 个节点的斥力，
+// 总量 ~1.15·N·K³/d²。要让半径落在 K·√N·0.8（面积正比于 N 才不会挤），
+// 解出 CENTER = 1.15N / (0.8³·N^1.5) = 2.25/√N。
+// 之前写死 1.15/27 等于忽略了 N，120 个节点就摊到 4275 单位宽，
+// fit() 撞上缩放下限，整张图溢出屏幕。
+const CENTER = 2.25 / Math.sqrt(N.length);
+// 边的透明度是边数的函数，不是常数。几条边时要看得清，上千条时必须退成背景纹理，
+// 否则整张图糊成一团灰雾（Obsidian 在 400 节点规模下边几乎是背景色）。
+const EDGE_A = Math.max(0.14, Math.min(0.55, 3.2 / Math.sqrt(E.length + 8)));
+const IDLE = 0.32;          // 极小的游走力：完全静止的图看起来是死的
+let tick = 0;
+let heat = 1, dragging = null, avgSpeed = 99;
 
 function step() {
   for (const n of N) { n.fx = 0; n.fy = 0; }
@@ -142,7 +157,7 @@ function step() {
   for (const e of E) {
     const a = e.S, b = e.T;
     const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
-    const f = (d * d) / K * 0.0016, ux = dx / d, uy = dy / d;
+    const f = (d * d) / K * 0.0034, ux = dx / d, uy = dy / d;   // 加强：太弱会摊成网格
     a.fx += ux * f; a.fy += uy * f; b.fx -= ux * f; b.fy -= uy * f;
   }
   // 同簇之间一点弱吸引，让板块在空间上聚成团——这正是图比索引多出来的那层信息
@@ -154,6 +169,9 @@ function step() {
     // 斥力约 1.15·K³/d²，取 c 使平衡点落在 ~3K（d³ = 1.15·K³/c）。
     // 之前 c=0.0022 对应 d≈8K，包围盒被撑爆，fit 算出的 scale 掉到标签阈值以下。
     n.fx -= n.x * CENTER; n.fy -= n.y * CENTER;
+    // 游走：每个节点一个相位，合起来是缓慢的有机漂动，不破坏布局
+    n.fx += Math.sin(tick * 0.0016 + n.ph) * IDLE;
+    n.fy += Math.cos(tick * 0.0021 + n.ph * 1.7) * IDLE;
   }
   for (const n of N) {
     if (n === dragging) continue;
@@ -162,7 +180,13 @@ function step() {
     if (sp > cap) { n.vx = n.vx / sp * cap; n.vy = n.vy / sp * cap; }
     n.x += n.vx; n.y += n.vy;
   }
+  tick++;
   heat = Math.max(0.06, heat * 0.994);
+  // 收敛判据用真实速度，不用热量：热量是时间的函数，大图还在铺开时
+  // 它就已经降到阈值，自动取景会提前停，导致图溢出屏幕。
+  let v = 0;
+  for (const n of N) v += Math.hypot(n.vx, n.vy);
+  avgSpeed = v / N.length;
 }
 function centroids() {
   const c = {};
@@ -195,7 +219,7 @@ function fit() {
   const top = 64, bottom = 34;
   const availW = Math.max(240, W - left - right);
   const availH = Math.max(240, H - top - bottom);
-  scale = Math.max(0.3, Math.min(1.8, Math.min(availW / w, availH / h)));
+  scale = Math.max(0.06, Math.min(1.8, Math.min(availW / w, availH / h)));
   ox = left + availW / 2 - (minx + maxx) / 2 * scale;
   oy = top + availH / 2 - (miny + maxy) / 2 * scale;
 }
@@ -205,9 +229,16 @@ const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).
 
 let hover = null, picked = null, query = '', userMoved = false;
 // 字号有下限，绝不跟着缩放缩到不可读——标签的可读性不该取决于缩放层级。
-// 阈值只管密度：缩到这个程度时节点已经挤到一起，标签叠成一团才是真噪声。
-const LABEL_MIN_SCALE = 0.35;
+// 显不显示则看**屏幕空间密度**，不看缩放层级：缩放只是间接指标，
+// 真正决定标签会不会糊成一片的是「每个节点在屏幕上分到多少地方」。
 const LABEL_PX = 11;
+const LABEL_MIN_ROOM = 72;      // 每节点的屏幕边长小于这个就藏起来
+function labelsVisible() {
+  const xs = N.map(n => n.x), ys = N.map(n => n.y);
+  const w = (Math.max(...xs) - Math.min(...xs)) * scale;
+  const h = (Math.max(...ys) - Math.min(...ys)) * scale;
+  return Math.sqrt(Math.max(w * h, 1) / N.length) > LABEL_MIN_ROOM;
+}
 const LABEL_MAX_CHARS = 24;     // 长 slug 会压到邻居；全名在详情面板里
 function shortLabel(id) {
   return id.length > LABEL_MAX_CHARS ? id.slice(0, LABEL_MAX_CHARS - 1) + '…' : id;
@@ -230,14 +261,19 @@ function lit(n) {
 function draw() {
   const SC = [css('--graph-node-1'), css('--graph-node-2'), css('--graph-node-3'), css('--graph-node-4')];
   const INK = css('--ink'), INK2 = css('--ink-2'), INK3 = css('--ink-3');
+  const focus = hover || picked;
+  const roomy = labelsVisible();
   ctx.clearRect(0, 0, W, H);
 
   for (const e of E) {
     const on = lit(e.S) && lit(e.T);
+    // 目标透明度平滑逼近，不硬切——hover 的明暗变化是这类图「顺眼」的一半原因
+    const target = on ? (e.bridge ? 1 : 0.78) : 0.12;
+    e.a = e.a === undefined ? target : e.a + (target - e.a) * 0.16;
     ctx.save();
-    ctx.globalAlpha = on ? (e.bridge ? 0.95 : 0.7) : 0.08;
+    ctx.globalAlpha = EDGE_A * e.a * (e.bridge ? (roomy ? 2.1 : 1.5) : 1);
     ctx.strokeStyle = e.bridge ? css('--graph-line-bridge') : css('--graph-line');
-    ctx.lineWidth = (e.bridge ? 2 : 1.2) * (e.mutual ? 1.7 : 1);
+    ctx.lineWidth = (e.bridge ? 1.6 : 1.1) * (e.mutual ? 1.6 : 1);
     if (e.bridge) ctx.setLineDash([6, 4]);
     ctx.beginPath();
     ctx.moveTo(sx(e.S), sy(e.S)); ctx.lineTo(sx(e.T), sy(e.T));
@@ -254,53 +290,78 @@ function draw() {
     b.y0 = Math.min(b.y0, n.y); b.k++;
   }
   ctx.textAlign = 'center';
+  ctx.font = '600 12px system-ui,sans-serif';
+  // 簇交错时标签会撞在一起。按屏幕 y 排好，逐个往上顶开——
+  // 撞成一团的标签比没有标签更糟，因为读者分不清哪个名字属于哪个簇。
+  const marks = [];
   for (const name in box) {
     const b = box[name];
     if (b.k < 2) continue;
+    marks.push({ name,
+      x: (b.x0 + b.x1) / 2 * scale + ox,
+      y: b.y0 * scale + oy - 22,
+      w: ctx.measureText(name).width });
+  }
+  marks.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < marks.length; i++) {
+    for (let j = 0; j < i; j++) {
+      const a = marks[j], b = marks[i];
+      if (Math.abs(a.x - b.x) < (a.w + b.w) / 2 + 12 && Math.abs(a.y - b.y) < 17) {
+        b.y = a.y - 17;                 // 往上顶开一行
+        j = -1;                          // 顶开之后要和前面所有的重新比
+      }
+    }
+  }
+  for (const m of marks) {
     ctx.save();
     ctx.globalAlpha = (hover || picked || query) ? 0.3 : 0.8;
-    ctx.fillStyle = INK3; ctx.font = '600 12px system-ui,sans-serif';
+    ctx.fillStyle = INK3;
+    ctx.font = '600 12px system-ui,sans-serif';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(name, (b.x0 + b.x1) / 2 * scale + ox, b.y0 * scale + oy - 22);
+    ctx.fillText(m.name, m.x, m.y);
     ctx.restore();
   }
 
-  const focus = hover || picked;
   for (const n of N) {
     const x = sx(n), y = sy(n);
     const r = (n.ghost ? n.r * 0.72 : n.r) * Math.max(0.7, Math.min(1.4, scale));
     const on = lit(n);
-    ctx.save(); ctx.globalAlpha = on ? (n.ghost ? 0.8 : 1) : 0.16;
+    const target = on ? (n.ghost ? 0.55 : 1) : 0.14;
+    n.a += (target - n.a) * 0.16;            // 平滑逼近，不硬切
+    ctx.save(); ctx.globalAlpha = n.a;
     ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832);
-    if (n.ghost) {
-      // 幽灵＝被链接但还不存在的片段。空心虚线圈，让「知道自己缺什么」
-      // 也显示在图上；它和孤儿成对：孤儿有内容没连接，幽灵有连接没内容。
-      ctx.strokeStyle = css('--graph-node-unresolved');
-      ctx.lineWidth = 1.6; ctx.setLineDash([3, 2.5]); ctx.stroke();
-    } else {
-      ctx.fillStyle = SC[n.slot]; ctx.fill();
-    }
-    // 未解决问题用圆环 + 数字表示，不占用颜色通道（颜色留给簇）
-    if (n.open.length) {
-      ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 6.2832);
-      ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.stroke();
-      ctx.fillStyle = INK; ctx.font = '700 10px system-ui,sans-serif';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(String(n.open.length), x, y - r - 11);
+    // 幽灵＝被链接但还不存在的片段。用淡填充而不是空心虚线圈：
+    // 密集时 4px 的虚线圈会直接消失，淡填充在任何尺度下都还在。
+    ctx.fillStyle = n.ghost ? css('--graph-node-unresolved') : SC[n.slot];
+    ctx.fill();
+    // 未解决问题：细环，用节点自己的颜色而不是纯黑/纯白——
+    // 高对比的环在满屏节点时会变成噪声，抢走本该属于结构的注意力。
+    // 计数只在放大或聚焦时出现（detail on demand）。
+    if (n.open.length && (roomy || (focus && (focus.id === n.id || nbr[focus.id].has(n.id))))) {
+      ctx.beginPath(); ctx.arc(x, y, r + 3.5, 0, 6.2832);
+      ctx.strokeStyle = SC[n.slot]; ctx.lineWidth = 1.2;
+      ctx.globalAlpha = n.a * 0.75; ctx.stroke();
+      if (scale > 0.8 || (focus && focus.id === n.id)) {
+        ctx.globalAlpha = n.a * 0.9;
+        ctx.fillStyle = css('--graph-text'); ctx.font = '600 10px system-ui,sans-serif';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(n.open.length), x, y - r - 9);
+      }
+      ctx.globalAlpha = n.a;
     }
     if (picked && picked.id === n.id) {
-      ctx.beginPath(); ctx.arc(x, y, r + 9, 0, 6.2832);
-      ctx.strokeStyle = css('--graph-node-focused'); ctx.lineWidth = 1.5;
-      ctx.setLineDash([3, 3]); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, r + 8, 0, 6.2832);
+      ctx.strokeStyle = css('--graph-node-focused'); ctx.lineWidth = 1.2;
+      ctx.stroke();
     }
     ctx.restore();
 
     // 标签：缩得太小就不画——读不了的标签只是噪声，而且几十个节点时会糊成一片。
     // 但当前关注的节点和它的邻居永远带标签（detail on demand）。
     const near = focus && (n.id === focus.id || nbr[focus.id].has(n.id));
-    if (scale < LABEL_MIN_SCALE && !near && !query) continue;
+    if (!roomy && !near && !query) continue;
     const fs = Math.round(LABEL_PX * Math.max(1, Math.min(1.3, scale)));
-    ctx.save(); ctx.globalAlpha = on ? (n.ghost ? 0.7 : 0.95) : 0.12;
+    ctx.save(); ctx.globalAlpha = n.a * (n.ghost ? 0.72 : 0.95);
     ctx.fillStyle = css('--graph-text');
     ctx.font = (n.ghost ? 'italic ' : '') + fs + 'px system-ui,sans-serif';
     ctx.textBaseline = 'top';
@@ -309,22 +370,18 @@ function draw() {
   }
 }
 
-let frozen = false;
+let settled = false;
 function loop() {
-  if (!frozen) {
-    step();
-    // 仿真还在动的时候持续跟随取景：否则 fit() 一算完节点就漂走，
-    // 视图停在过期的框上（表现为图偏向一侧、另一侧空一大片）。
-    // 用户一旦自己动过视图，控制权就交还给他。
-    if (!userMoved) fit();
-    // 降到阈值就彻底停：heat 有下限，不显式冻结的话节点会永远微漂，
-    // 取景框永远对不准，而且白白占着 CPU。
-    if (heat <= 0.075 && !dragging) frozen = true;
-  }
+  step();
+  // 收敛期持续跟随取景；一旦稳定就锁死取景框，但**物理不停**——
+  // 完全冻结的图看起来是死的，轻微的游走才有生命感。
+  // 锁的是取景不是运动：这样既不会因为节点微漂而框歪，又保住了动态。
+  if (!settled && !userMoved) fit();
+  if (avgSpeed < 0.35 && !dragging) settled = true;
   draw();
   requestAnimationFrame(loop);
 }
-function thaw(h) { frozen = false; heat = Math.max(heat, h); }
+function thaw(h) { settled = false; heat = Math.max(heat, h); }
 
 /* ---------- 交互 ---------- */
 function at(mx, my) {
@@ -442,12 +499,14 @@ addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
     + '<div class="row"><span class="seg" style="border-top-style:solid;border-top-width:3px">'
     + '</span><span>互相引用</span></div>';
   if (N.some(n => n.ghost)) {
-    h += '<div class="row"><span class="ring" style="border-style:dashed;'
-      + 'border-color:var(--graph-node-unresolved)"></span><span>还没写的片段</span></div>';
+    h += '<div class="row"><span class="dot" style="background:'
+      + 'var(--graph-node-unresolved);opacity:.55"></span>'
+      + '<span>还没写的片段</span></div>';
   }
   if (DATA.clusters.length > 3) {
-    h += '<hr><div class="note">第 4 个起的簇共用中性灰：三色是 CVD 全配对'
-      + '能通过的上限，身份靠节点标签和簇名区分。</div>';
+    h += '<hr><div class="note" title="节点图里任意两簇都可能相邻，适用全配对标准；'
+      + '实测第四色相黄↔橙正常视觉 ΔE 13.7 < 15。身份靠节点标签和簇名承载。">'
+      + '第 4 个起共用中性灰 ⓘ</div>';
   }
   document.getElementById('legend').innerHTML = h;
 })();
