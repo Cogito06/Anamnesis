@@ -246,12 +246,15 @@ let hover = null, picked = null, query = '', userMoved = false;
 // 显不显示则看**屏幕空间密度**，不看缩放层级：缩放只是间接指标，
 // 真正决定标签会不会糊成一片的是「每个节点在屏幕上分到多少地方」。
 const LABEL_PX = 11;
-const LABEL_MIN_ROOM = 72;      // 每节点的屏幕边长小于这个就藏起来
-function labelsVisible() {
+const LABEL_MIN_ROOM = 72;      // 每节点的屏幕边长小于这个就藏标签
+// 每个节点在屏幕上分到的边长。标签显不显示、节点画多大，都该由它决定：
+// 节点尺寸若只跟缩放走，图一大就会挤成一团实心块——节点之间没有空隙，
+// 边被盖住，结构就看不见了。Obsidian 那种通透感来自节点:间距 ≈ 1:5。
+function roomPerNode() {
   const xs = N.map(n => n.x), ys = N.map(n => n.y);
   const w = (Math.max(...xs) - Math.min(...xs)) * scale;
   const h = (Math.max(...ys) - Math.min(...ys)) * scale;
-  return Math.sqrt(Math.max(w * h, 1) / N.length) > LABEL_MIN_ROOM;
+  return Math.sqrt(Math.max(w * h, 1) / N.length);
 }
 const LABEL_MAX_CHARS = 24;     // 长 slug 会压到邻居；全名在详情面板里
 function shortLabel(id) {
@@ -276,7 +279,9 @@ function draw() {
   const SC = [css('--graph-node-1'), css('--graph-node-2'), css('--graph-node-3'), css('--graph-node-4')];
   const INK = css('--ink'), INK2 = css('--ink-2'), INK3 = css('--ink-3');
   const focus = hover || picked;
-  const roomy = labelsVisible();
+  const room = roomPerNode();
+  const roomy = room > LABEL_MIN_ROOM;
+  const sizeK = Math.max(0.40, Math.min(1.4, room / 95));
   ctx.clearRect(0, 0, W, H);
 
   for (const e of E) {
@@ -338,7 +343,7 @@ function draw() {
 
   for (const n of N) {
     const x = sx(n), y = sy(n);
-    const r = (n.ghost ? n.r * 0.72 : n.r) * Math.max(0.7, Math.min(1.4, scale));
+    const r = (n.ghost ? n.r * 0.72 : n.r) * sizeK;
     const on = lit(n);
     const target = on ? (n.ghost ? 0.55 : 1) : 0.14;
     n.a += (target - n.a) * 0.16;            // 平滑逼近，不硬切
@@ -396,10 +401,12 @@ function thaw(h) { heat = Math.max(heat, h); }
 
 /* ---------- 交互 ---------- */
 function at(mx, my) {
+  // 用和绘制相同的尺寸系数，否则画得小、却按大半径命中（或反过来）
+  const k = Math.max(0.40, Math.min(1.4, roomPerNode() / 95));
   let best = null, bd = 1e9;
   for (const n of N) {
     const d = Math.hypot(mx - sx(n), my - sy(n));
-    if (d < n.r * scale + 11 && d < bd) { bd = d; best = n; }
+    if (d < n.r * k + 11 && d < bd) { bd = d; best = n; }
   }
   return best;
 }
@@ -500,9 +507,15 @@ addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
 /* ---------- 图例 ---------- */
 (function () {
   const SC = ['--graph-node-1', '--graph-node-2', '--graph-node-3', '--graph-node-4'];
-  let h = DATA.clusters.map(c =>
+  const shown = DATA.clusters.slice(0, 8), rest = DATA.clusters.slice(8);
+  let h = shown.map(c =>
     '<div class="row"><span class="dot" style="background:var(' + SC[c[2]] + ')"></span>'
     + '<span>' + esc(c[0]) + '</span><span class="n">' + c[1] + '</span></div>').join('');
+  if (rest.length) {
+    h += '<div class="row"><span class="dot" style="background:var(--graph-node-4)"></span>'
+      + '<span style="color:var(--ink-3)">其余 ' + rest.length + ' 个簇</span>'
+      + '<span class="n">' + rest.reduce((a, c) => a + c[1], 0) + '</span></div>';
+  }
   h += '<hr><div class="row"><span class="ring"></span><span>有未解决问题</span></div>'
     + '<div class="row"><span class="seg"></span><span>跨簇的桥</span></div>'
     + '<div class="row"><span class="seg" style="border-top-style:solid;border-top-width:3px">'
