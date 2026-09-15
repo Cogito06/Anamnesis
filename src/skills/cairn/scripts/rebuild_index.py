@@ -118,56 +118,52 @@ def main():
         rows[slug] = (sort_key, f"- [{slug}] {'/'.join(concepts[:MAX_CONCEPTS])} "
                                f"— {hook} | open:{n_open} | {shown}")
 
-    # ---- 按连通分量分簇 ----
-    # 成员由链接图推导，所以不会和片段漂移；名字由 cluster 字段声明（可选）。
-    # 自动起名不可行：同一簇的片段 concepts 交集往往是空的。
+    # ---- 分簇：成员由 cluster 字段声明，图只负责校验 ----
+    # 一度想用连通分量自动推导成员，但跨簇链接是正常且值得鼓励的
+    # （「Karatsuba 够不到平衡点」理应链向「改模型 vs 改算法」），
+    # 而只要有一条这样的边，两个簇就塌成一个。实测 6 条片段被并成 1 个簇。
+    # 所以边界必须是声明的，图拿来找桥和查异常。
     adj = {s: set() for s in slugs}
-    for a, outs in out_links.items():
-        for b in outs:
-            if b in slugs:
-                adj[a].add(b); adj[b].add(a)
+    for a_, outs in out_links.items():
+        for b_ in outs:
+            if b_ in slugs:
+                adj[a_].add(b_); adj[b_].add(a_)
 
-    seen, clusters = set(), []
+    groups = {}
     for s in sorted(slugs):
-        if s in seen:
-            continue
-        comp, stack = set(), [s]
-        while stack:                       # BFS 求连通分量
-            x = stack.pop()
-            if x in comp:
-                continue
-            comp.add(x); seen.add(x)
-            stack.extend(adj[x] - comp)
-        clusters.append(comp)
+        groups.setdefault(labels.get(s, ""), []).append(s)
 
-    def cluster_label(comp):
-        declared = [labels[m] for m in comp if labels.get(m)]
-        if declared:                       # 多数票；平票取字典序小的，保证稳定
-            return max(sorted(set(declared)), key=declared.count)
-        hub = max(comp, key=lambda m: (len(adj[m]), m))   # 退回度数最高的枢纽
-        return hub
+    # 跨簇链接就是理解之间的桥，值得单独报出来
+    bridges = sorted({(labels.get(x, ""), labels.get(y, ""))
+                      for x in slugs for y in adj[x]
+                      if labels.get(x) and labels.get(y) and labels[x] != labels[y]
+                      and labels[x] < labels[y]})
+
+    # 声明成同一簇却互不链接，通常说明簇名用错了或链接忘了写
+    for name, members in groups.items():
+        if name and len(members) > 1 and not any(adj[m] & set(members) for m in members):
+            warn.append(f"簇「{name}」的 {len(members)} 条片段之间没有任何链接"
+                        f"——确认它们真是一个板块")
 
     orphans = [s for s in sorted(slugs) if not adj[s]]
 
-    orphans = [s for s in sorted(slugs) if not out_links.get(s) and not in_links[s]]
     total_open = sum(int(re.search(r"open:(\d+)", v[1]).group(1)) for v in rows.values())
 
-    # 多成员的簇先排（按最新成员的日期倒序），单条片段最后平铺
-    multi = sorted((c for c in clusters if len(c) > 1),
-                   key=lambda c: max(rows[m][0] for m in c), reverse=True)
-    singles = sorted((next(iter(c)) for c in clusters if len(c) == 1),
-                     key=lambda m: rows[m][0], reverse=True)
+    # 有名字的簇先排（按最新成员的日期倒序），无名字的最后平铺
+    named = sorted(((n, m) for n, m in groups.items() if n),
+                   key=lambda kv: max(rows[m][0] for m in kv[1]), reverse=True)
+    unnamed = sorted(groups.get("", []), key=lambda m: rows[m][0], reverse=True)
 
     body_lines = []
-    for comp in multi:
-        members = sorted(comp, key=lambda m: rows[m][0], reverse=True)
-        body_lines.append(f"## {cluster_label(comp)}（{len(members)} 条）")
+    for name, members in named:
+        members = sorted(members, key=lambda m: rows[m][0], reverse=True)
+        body_lines.append(f"## {name}（{len(members)} 条）")
         body_lines += [rows[m][1] for m in members]
         body_lines.append("")
-    if singles:
-        if multi:
-            body_lines.append(f"## 尚未成簇（{len(singles)} 条）")
-        body_lines += [rows[m][1] for m in singles]
+    if unnamed:
+        if named:
+            body_lines.append(f"## 尚未归簇（{len(unnamed)} 条）")
+        body_lines += [rows[m][1] for m in unnamed]
 
     while body_lines and body_lines[-1] == "":
         body_lines.pop()
@@ -180,10 +176,14 @@ def main():
     total_bytes = sum(len(l.encode()) + 1 for l in body_lines if l)
     avg = total_bytes // max(len(entry_lines), 1)
     print(f"索引已重建：{len(rows)} 条片段，{total_open} 个未解决问题，"
-          f"{n_links} 条链接，{len(multi)} 个簇")
+          f"{n_links} 条链接，{len(named)} 个簇")
     print(f"  索引正文 {total_bytes} 字节，平均每行 {avg} 字节")
     for w in warn:
         print(f"  警告 {w}")
+    if bridges:
+        print("  跨簇的桥（理解之间的连接，通常是最有价值的部分）：")
+        for x, y in bridges:
+            print(f"    {x} ←→ {y}")
     if orphans:
         print(f"  孤儿片段（没有任何进出链接，可能还没接进你的理解网络）：{', '.join(orphans)}")
     if total_bytes > 12000:
