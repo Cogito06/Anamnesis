@@ -207,21 +207,35 @@ function resize() {
   cv.style.width = W + 'px'; cv.style.height = H + 'px';
   ctx.setTransform(d, 0, 0, d, 0, 0);
 }
-function fit() {
+function fitTarget() {
   const xs = N.map(n => n.x), ys = N.map(n => n.y);
   const minx = Math.min(...xs), maxx = Math.max(...xs);
   const miny = Math.min(...ys), maxy = Math.max(...ys);
   // 留出节点半径、节点标签和簇名标签的空间，否则边缘的节点会被切掉
   const w = maxx - minx + 260, h = maxy - miny + 190;
-  // 面板没开就用整个宽度——之前无条件预留面板宽度，右侧空一大片
+  // 面板没开就用整个宽度——无条件预留面板宽度会让右侧空一大片
   const panelOpen = !panel.hidden && W > 900;
   const left = 24, right = panelOpen ? 372 : 24;
   const top = 64, bottom = 34;
   const availW = Math.max(240, W - left - right);
   const availH = Math.max(240, H - top - bottom);
-  scale = Math.max(0.06, Math.min(1.8, Math.min(availW / w, availH / h)));
-  ox = left + availW / 2 - (minx + maxx) / 2 * scale;
-  oy = top + availH / 2 - (miny + maxy) / 2 * scale;
+  const s = Math.max(0.06, Math.min(1.8, Math.min(availW / w, availH / h)));
+  return { s,
+    ox: left + availW / 2 - (minx + maxx) / 2 * s,
+    oy: top + availH / 2 - (miny + maxy) / 2 * s };
+}
+// 取景持续平滑跟随，不用「收敛了就锁死」那套：布局在判定收敛之后
+// 往往还在缓慢收缩，锁死的框会过期——表现为图缩成一小团或溢出屏幕。
+// 平滑跟随永远不会过期，而且游走造成的微小偏差被缓动吸收掉，不会抖。
+function fit(smooth) {
+  const t = fitTarget();
+  if (smooth) {
+    scale += (t.s - scale) * 0.07;
+    ox += (t.ox - ox) * 0.07;
+    oy += (t.oy - oy) * 0.07;
+  } else {
+    scale = t.s; ox = t.ox; oy = t.oy;
+  }
 }
 const sx = n => n.x * scale + ox;
 const sy = n => n.y * scale + oy;
@@ -370,18 +384,15 @@ function draw() {
   }
 }
 
-let settled = false;
 function loop() {
   step();
-  // 收敛期持续跟随取景；一旦稳定就锁死取景框，但**物理不停**——
-  // 完全冻结的图看起来是死的，轻微的游走才有生命感。
-  // 锁的是取景不是运动：这样既不会因为节点微漂而框歪，又保住了动态。
-  if (!settled && !userMoved) fit();
-  if (avgSpeed < 0.35 && !dragging) settled = true;
+  // 物理永不停：完全冻结的图看起来是死的，轻微游走才有生命感。
+  // 取景平滑跟随，除非用户自己动过视图。
+  if (!userMoved) fit(true);
   draw();
   requestAnimationFrame(loop);
 }
-function thaw(h) { settled = false; heat = Math.max(heat, h); }
+function thaw(h) { heat = Math.max(heat, h); }
 
 /* ---------- 交互 ---------- */
 function at(mx, my) {
@@ -469,18 +480,16 @@ function show(n) {
       '<li><span class="lnk" data-go="' + esc(l) + '">' + esc(l) + '</span></li>').join('') + '</ul>';
   }
   panel.innerHTML = h;
-  const wasHidden = panel.hidden;
   panel.hidden = false;
-  if (wasHidden) fit();
   panel.querySelector('#x').onclick = hide;
   panel.querySelectorAll('[data-go]').forEach(el => {
     el.onclick = () => show(byId[el.dataset.go]);
   });
 }
-function hide() { picked = null; if (!panel.hidden) { panel.hidden = true; fit(); } }
+function hide() { picked = null; panel.hidden = true; }
 
 document.getElementById('q').addEventListener('input', e => { query = e.target.value.trim(); });
-document.getElementById('fit').onclick = () => { thaw(0.8); userMoved = false; fit(); };
+document.getElementById('fit').onclick = () => { thaw(0.8); userMoved = false; fit(false); };
 document.getElementById('theme').onclick = () => {
   const cur = document.documentElement.getAttribute('data-theme');
   const dark = cur ? cur === 'dark' : matchMedia('(prefers-color-scheme:dark)').matches;
@@ -511,9 +520,9 @@ addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
   document.getElementById('legend').innerHTML = h;
 })();
 
-addEventListener('resize', () => { resize(); fit(); });
+addEventListener('resize', () => { resize(); });
 resize();
 for (let i = 0; i < 280; i++) step();     // 先跑一段，打开时已经成形
-fit(); loop();
+fit(false); loop();
 setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 6000);
 </script></body></html>
