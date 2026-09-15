@@ -94,11 +94,12 @@ hook 检查 `<cwd>/cairn/INDEX.md` 首行是否含魔术标记：
 （`halve-is-not-log` 而不是 `russian-peasant-complexity`）；2–5 个词。
 撞名不加后缀——撞名说明是同一主题，该合并。
 
-### frontmatter：五个字段
+### frontmatter：六个字段
 
 ```markdown
 ---
 course: cs170                      # 日后按学科分化 agent 的切分依据
+cluster: 整数乘法能多快            # 索引里分组用；同一板块写同一个名字
 date: 2026-09-15                   # 元数据，不参与身份
 concepts: [俄罗斯农夫乘法, Russian Peasant Algorithm, 位数, bit complexity, 竖式乘法, ...]
 hook: 「每轮减半→log n 层」是归并排序的错误 pattern-match：减半的是值不是问题规模，值减半只砍掉 1 个 bit，所以 n 轮不是 log n 轮
@@ -352,16 +353,41 @@ Claude Code 只用 `Edit(path)` 和 `Read(path)` 做文件权限检查，
 
 ## 7. 完整循环
 
-**Session 1**
-SessionStart 注入（库空）→ 聊共形映射，卡在「为什么 Helmholtz 映过去就烂了」→ 聊通 → `/cairn`
-→ agent 提议 3 条，你砍掉 1 条纯教科书复述的 → 落盘 2 条 + 重建 INDEX
+下面这次是 cs170 里**真实发生过**的，不是构造的例子。
 
-**Session 2（两周后）**
-SessionStart 注入 INDEX + 1 个 open question
-→ 你问「三维的 Dirichlet 问题能不能也这么映过去」
-→ agent 从钩子判断需要细节 → 读 `fragments/conformal-only-laplace.md`
-→ **不重新推导 |f'|² 恒等式**，直接答「只有 n=2 时梯度和体积元的因子才抵消」，
-  并接上那个还开着的 Helmholtz 遗留问题
+**会话一（lec-1，整数乘法）**
+
+SessionStart 注入（库空）→ 聊俄罗斯农夫乘法的复杂度，卡在「每轮减半为什么不是
+log n 层」→ 聊通 → `/cairn` → agent 从 8 个候选里按闸门筛出 3 条提议，
+另外 5 条逐条说明了丢弃理由（教科书查得到的、只是例子的、只复述 agent 答案的）。
+
+其中 `change-model-vs-change-algorithm` 留下一个遗留问题：
+
+> - [ ] Karatsuba 和 FFT 都还没学（ch2）。学完回来验证「改算法 vs 改模型」
+>   这个二分是不是站得住，特别是 FFT——它换的是表示法，算 A 还是 B？
+
+**会话二（lec-2，主定理）**
+
+SessionStart 注入 3 条索引 **+ 那个还开着的问题**。聊主定理时，agent 拿新学的
+天平回头去量上一轮的整数乘法，落盘 `karatsuba-cant-reach-balance`——
+它在正文里直接链回 `[[change-model-vs-change-algorithm]]`，并给出结论：
+
+> FFT 拿到 `a=2` 不是因为切得更聪明——**它根本没在切同一个问题**，它换了表示法。
+> 换表示法不是第三条路，是「改算法」里最激进的一种。
+
+**回头收尾**
+
+把这个结论写回旧片段，遗留问题从 `- [ ]` 改成 `- [x]`，重跑脚本。
+未解决数 4 → 3，链接数 11 → 13，两个簇之间长出一条**桥**。
+
+---
+
+这个循环里，系统实际提供的是三件事：
+
+1. **会话二不需要重新解释**会话一已经想通的部分——索引注入让它一开口就知道
+2. **那个遗留问题主动找上门**，而不是等你想起来去查
+3. **桥被自动识别出来**——「用主定理回头量整数乘法」这个连接，在索引里是一条
+   跨簇链接，在图上是一条虚线。它标记的正是两块知识打通的地方
 
 省下的不是压缩带来的 token，是「不用第二次解释同一件事」——
 而且质量更高，因为它知道你的误解史。
