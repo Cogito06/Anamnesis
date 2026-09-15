@@ -130,7 +130,8 @@ hw03 第二题把上半平面的 Dirichlet 问题映到单位圆盘。做完顺�
 **不对你的学习材料施加任何结构。** 课程仓库用它自带的骨架，`cairn/` 是唯一的新增物。
 hook 靠 `cairn/INDEX.md` 首行的魔术标记判断是否激活，**在非学习项目里完全静默**。
 
-完整设计和已核实的技术依据见 [ARCHITECTURE.md](ARCHITECTURE.md)。
+完整设计和已核实的技术依据见 [ARCHITECTURE.md](ARCHITECTURE.md)，
+路线图和想法池见 [TODO.md](TODO.md)。
 
 ## 状态
 

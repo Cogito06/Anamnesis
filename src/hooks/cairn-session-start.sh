@@ -20,7 +20,7 @@ idx="$cwd/$CAIRN_DIR/INDEX.md"
 
 # 只取条目行。魔术标记、标题、"本文件自动生成"那类注释是给 hook 和人看的，
 # 每次注入等于白烧 token。
-entries=$(grep '^- \[' "$idx" 2>/dev/null)
+entries=$(grep -E '^(- \[|## )' "$idx" 2>/dev/null)
 n=$(printf '%s' "$entries" | grep -c '^- \[')
 
 echo "## Anamnesis —— 已归档的认知片段（$CAIRN_DIR/INDEX.md，共 ${n:-0} 条）"
