@@ -7,27 +7,33 @@
   color-scheme:light;
   --surface:#fcfcfb; --panel:#ffffff; --line:rgba(0,0,0,.10);
   --ink:#1a1a19; --ink-2:#5e5d59; --ink-3:#8a8880;
-  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#8a8880;
-  --edge:rgba(0,0,0,.24); --bridge:#5e5d59;
+  --graph-node-1:#2a78d6; --graph-node-2:#eb6834; --graph-node-3:#1baf7a; --graph-node-4:#8a8880;
+  --graph-line:rgba(0,0,0,.24); --graph-line-bridge:#5e5d59;
+  --graph-node-unresolved:#a8a69c; --graph-node-focused:#1a1a19;
+  --graph-text:#5e5d59;
 }
 @media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])){
   color-scheme:dark;
   --surface:#1a1a19; --panel:#232322; --line:rgba(255,255,255,.14);
   --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8a8880;
-  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#8a8880;
-  --edge:rgba(255,255,255,.28); --bridge:#c3c2b7;
+  --graph-node-1:#3987e5; --graph-node-2:#d95926; --graph-node-3:#199e70; --graph-node-4:#8a8880;
+  --graph-line:rgba(255,255,255,.28); --graph-line-bridge:#c3c2b7;
+  --graph-node-unresolved:#6b6a63; --graph-node-focused:#ffffff;
+  --graph-text:#c3c2b7;
 }}
 :root[data-theme="dark"]{
   color-scheme:dark;
   --surface:#1a1a19; --panel:#232322; --line:rgba(255,255,255,.14);
   --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8a8880;
-  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#8a8880;
-  --edge:rgba(255,255,255,.28); --bridge:#c3c2b7;
+  --graph-node-1:#3987e5; --graph-node-2:#d95926; --graph-node-3:#199e70; --graph-node-4:#8a8880;
+  --graph-line:rgba(255,255,255,.28); --graph-line-bridge:#c3c2b7;
+  --graph-node-unresolved:#6b6a63; --graph-node-focused:#ffffff;
+  --graph-text:#c3c2b7;
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--surface);color:var(--ink);overflow:hidden;
-  font:14px/1.55 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  font:14px/1.55 system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei","Hiragino Sans GB",sans-serif}
 canvas{display:block;cursor:grab}
 canvas.drag{cursor:grabbing}
 
@@ -35,7 +41,7 @@ canvas.drag{cursor:grabbing}
   padding:10px 14px;background:color-mix(in srgb,var(--surface) 88%,transparent);
   backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
 .bar h1{margin:0;font-size:14px;font-weight:650;letter-spacing:.01em}
-.bar .sub{color:var(--ink-3);font-size:12px}
+.bar .sub{color:var(--ink-3);font-size:12px;font-variant-numeric:tabular-nums}
 .bar .sp{flex:1}
 input,button{font:inherit;color:var(--ink);background:var(--panel);
   border:1px solid var(--line);border-radius:7px;padding:5px 10px}
@@ -51,8 +57,8 @@ button:hover{border-color:var(--ink-3)}
 .legend .dot{width:10px;height:10px;border-radius:50%;flex:none}
 .legend .ring{width:12px;height:12px;border-radius:50%;flex:none;
   border:2px solid var(--ink-2);background:transparent}
-.legend .seg{width:22px;height:0;flex:none;border-top:2px dashed var(--bridge)}
-.legend .n{color:var(--ink-3);margin-left:auto}
+.legend .seg{width:22px;height:0;flex:none;border-top:2px dashed var(--graph-line-bridge)}
+.legend .n{color:var(--ink-3);margin-left:auto;font-variant-numeric:tabular-nums}
 .legend hr{border:0;border-top:1px solid var(--line);margin:8px 0}
 .legend .note{color:var(--ink-3);line-height:1.45}
 
@@ -60,7 +66,7 @@ button:hover{border-color:var(--ink-3)}
   background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
 .panel[hidden]{display:none!important}
 .panel h2{margin:0 0 2px;font-size:15px;line-height:1.35;word-break:break-all}
-.panel .meta{color:var(--ink-3);font-size:12px;margin-bottom:12px}
+.panel .meta{color:var(--ink-3);font-size:12px;margin-bottom:12px;font-variant-numeric:tabular-nums}
 .panel h3{margin:16px 0 5px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
   color:var(--ink-3);font-weight:650}
 .panel p{margin:0;color:var(--ink-2)}
@@ -102,8 +108,9 @@ N.forEach(n => { nbr[n.id] = new Set(); });
 E.forEach(e => { nbr[e.s].add(e.t); nbr[e.t].add(e.s); });
 
 document.getElementById('sub').textContent =
-  DATA.repo + ' · ' + N.length + ' 个片段 · ' + E.length + ' 条链接 · '
-  + E.filter(e => e.bridge).length + ' 条跨簇的桥';
+  DATA.repo + ' · ' + N.filter(n => !n.ghost).length + ' 个片段 · ' + E.length + ' 条链接 · '
+  + E.filter(e => e.bridge && !e.ghost).length + ' 条跨簇的桥'
+  + (N.some(n => n.ghost) ? ' · ' + N.filter(n => n.ghost).length + ' 个还没写' : '');
 
 /* ---------- 布局 ----------
    简单的 Fruchterman–Reingold。节点数是几十量级，O(n²) 斥力足够；
@@ -117,6 +124,7 @@ N.forEach((n, i) => {
   n.r = 5 + Math.min(9, Math.sqrt(n.deg) * 3.4);
 });
 const K = R / Math.sqrt(Math.max(N.length, 2));
+const CENTER = 1.15 / 27;   // 平衡点 ≈ 3K
 let heat = 1, dragging = null;
 
 function step() {
@@ -142,7 +150,10 @@ function step() {
   for (const n of N) {
     const c = cen[n.cluster];
     n.fx += (c.x - n.x) * 0.012; n.fy += (c.y - n.y) * 0.012;
-    n.fx -= n.x * 0.0022;        n.fy -= n.y * 0.0022;   // 轻微向心，防飘走
+    // 向心力。互不相连的簇之间只有斥力，向心太弱它们会飞到极远：
+    // 斥力约 1.15·K³/d²，取 c 使平衡点落在 ~3K（d³ = 1.15·K³/c）。
+    // 之前 c=0.0022 对应 d≈8K，包围盒被撑爆，fit 算出的 scale 掉到标签阈值以下。
+    n.fx -= n.x * CENTER; n.fy -= n.y * CENTER;
   }
   for (const n of N) {
     if (n === dragging) continue;
@@ -193,6 +204,14 @@ const sy = n => n.y * scale + oy;
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 
 let hover = null, picked = null, query = '', userMoved = false;
+// 字号有下限，绝不跟着缩放缩到不可读——标签的可读性不该取决于缩放层级。
+// 阈值只管密度：缩到这个程度时节点已经挤到一起，标签叠成一团才是真噪声。
+const LABEL_MIN_SCALE = 0.35;
+const LABEL_PX = 11;
+const LABEL_MAX_CHARS = 24;     // 长 slug 会压到邻居；全名在详情面板里
+function shortLabel(id) {
+  return id.length > LABEL_MAX_CHARS ? id.slice(0, LABEL_MAX_CHARS - 1) + '…' : id;
+}
 function matches(n) {
   const q = query.toLowerCase();
   if (!q) return true;
@@ -209,7 +228,7 @@ function lit(n) {
 }
 
 function draw() {
-  const SC = [css('--s1'), css('--s2'), css('--s3'), css('--s4')];
+  const SC = [css('--graph-node-1'), css('--graph-node-2'), css('--graph-node-3'), css('--graph-node-4')];
   const INK = css('--ink'), INK2 = css('--ink-2'), INK3 = css('--ink-3');
   ctx.clearRect(0, 0, W, H);
 
@@ -217,7 +236,7 @@ function draw() {
     const on = lit(e.S) && lit(e.T);
     ctx.save();
     ctx.globalAlpha = on ? (e.bridge ? 0.95 : 0.7) : 0.08;
-    ctx.strokeStyle = e.bridge ? css('--bridge') : css('--edge');
+    ctx.strokeStyle = e.bridge ? css('--graph-line-bridge') : css('--graph-line');
     ctx.lineWidth = (e.bridge ? 2 : 1.2) * (e.mutual ? 1.7 : 1);
     if (e.bridge) ctx.setLineDash([6, 4]);
     ctx.beginPath();
@@ -229,6 +248,7 @@ function draw() {
   // 固定偏移就会把标签丢进簇内部，正好压在节点和连线上。
   const box = {};
   for (const n of N) {
+    if (n.ghost) continue;          // 幽灵不算进簇的包围盒，否则簇名会被拽跑
     const b = box[n.cluster] ||= { x0: 1e9, x1: -1e9, y0: 1e9, k: 0 };
     b.x0 = Math.min(b.x0, n.x); b.x1 = Math.max(b.x1, n.x);
     b.y0 = Math.min(b.y0, n.y); b.k++;
@@ -245,13 +265,21 @@ function draw() {
     ctx.restore();
   }
 
+  const focus = hover || picked;
   for (const n of N) {
     const x = sx(n), y = sy(n);
-    const r = n.r * Math.max(0.7, Math.min(1.4, scale));
+    const r = (n.ghost ? n.r * 0.72 : n.r) * Math.max(0.7, Math.min(1.4, scale));
     const on = lit(n);
-    ctx.save(); ctx.globalAlpha = on ? 1 : 0.16;
+    ctx.save(); ctx.globalAlpha = on ? (n.ghost ? 0.8 : 1) : 0.16;
     ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832);
-    ctx.fillStyle = SC[n.slot]; ctx.fill();
+    if (n.ghost) {
+      // 幽灵＝被链接但还不存在的片段。空心虚线圈，让「知道自己缺什么」
+      // 也显示在图上；它和孤儿成对：孤儿有内容没连接，幽灵有连接没内容。
+      ctx.strokeStyle = css('--graph-node-unresolved');
+      ctx.lineWidth = 1.6; ctx.setLineDash([3, 2.5]); ctx.stroke();
+    } else {
+      ctx.fillStyle = SC[n.slot]; ctx.fill();
+    }
     // 未解决问题用圆环 + 数字表示，不占用颜色通道（颜色留给簇）
     if (n.open.length) {
       ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 6.2832);
@@ -262,14 +290,21 @@ function draw() {
     }
     if (picked && picked.id === n.id) {
       ctx.beginPath(); ctx.arc(x, y, r + 9, 0, 6.2832);
-      ctx.strokeStyle = INK; ctx.lineWidth = 1.5;
+      ctx.strokeStyle = css('--graph-node-focused'); ctx.lineWidth = 1.5;
       ctx.setLineDash([3, 3]); ctx.stroke();
     }
     ctx.restore();
-    ctx.save(); ctx.globalAlpha = on ? 0.95 : 0.12;
-    ctx.fillStyle = INK2; ctx.font = '11px system-ui,sans-serif';
+
+    // 标签：缩得太小就不画——读不了的标签只是噪声，而且几十个节点时会糊成一片。
+    // 但当前关注的节点和它的邻居永远带标签（detail on demand）。
+    const near = focus && (n.id === focus.id || nbr[focus.id].has(n.id));
+    if (scale < LABEL_MIN_SCALE && !near && !query) continue;
+    const fs = Math.round(LABEL_PX * Math.max(1, Math.min(1.3, scale)));
+    ctx.save(); ctx.globalAlpha = on ? (n.ghost ? 0.7 : 0.95) : 0.12;
+    ctx.fillStyle = css('--graph-text');
+    ctx.font = (n.ghost ? 'italic ' : '') + fs + 'px system-ui,sans-serif';
     ctx.textBaseline = 'top';
-    ctx.fillText(n.id, x, y + r + 5);
+    ctx.fillText(shortLabel(n.id), x, y + r + 5);
     ctx.restore();
   }
 }
@@ -350,21 +385,30 @@ function show(n) {
   picked = n;
   const links = Array.from(nbr[n.id]);
   let h = '<button class="close" id="x">✕</button>'
-    + '<h2>' + esc(n.id) + '</h2>'
-    + '<div class="meta">' + esc(n.cluster) + ' · ' + esc(n.date || '')
-    + ' · ' + links.length + ' 条链接</div>'
-    + '<h3>钩子</h3><p class="hook">' + esc(n.hook || '（缺 hook 字段）') + '</p>';
+    + '<h2>' + esc(n.id) + '</h2>';
+  if (n.ghost) {
+    h += '<div class="meta">还不存在的片段 · 被 ' + (n.from || []).length + ' 条引用</div>'
+      + '<h3>状态</h3><p>有片段用 <code>[[' + esc(n.id) + ']]</code> 指向它，'
+      + '但 <code>fragments/' + esc(n.id) + '.md</code> 还没写。'
+      + '这不是错误——它记着你已经知道这里该有东西。</p>';
+  } else {
+    h += '<div class="meta">' + esc(n.cluster) + ' · ' + esc(n.date || '')
+      + ' · ' + links.length + ' 条链接</div>'
+      + '<h3>钩子</h3><p class="hook">' + esc(n.hook || '（缺 hook 字段）') + '</p>';
+  }
   if (n.open.length) {
     h += '<h3>未解决（' + n.open.length + '）</h3><ul>'
       + n.open.map(o => '<li>' + esc(o) + '</li>').join('') + '</ul>';
   }
-  h += '<h3>概念</h3><div class="tags">'
-    + n.concepts.map(c => '<span class="tag">' + esc(c) + '</span>').join('') + '</div>';
+  if (n.concepts.length) {
+    h += '<h3>概念</h3><div class="tags">'
+      + n.concepts.map(c => '<span class="tag">' + esc(c) + '</span>').join('') + '</div>';
+  }
   if (n.refs.length) {
     h += '<h3>材料</h3><ul>' + n.refs.map(r => '<li>' + esc(r) + '</li>').join('') + '</ul>';
   }
   if (links.length) {
-    h += '<h3>链接到</h3><ul>' + links.map(l =>
+    h += '<h3>' + (n.ghost ? '被这些引用' : '链接到') + '</h3><ul>' + links.map(l =>
       '<li><span class="lnk" data-go="' + esc(l) + '">' + esc(l) + '</span></li>').join('') + '</ul>';
   }
   panel.innerHTML = h;
@@ -389,7 +433,7 @@ addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
 
 /* ---------- 图例 ---------- */
 (function () {
-  const SC = ['--s1', '--s2', '--s3', '--s4'];
+  const SC = ['--graph-node-1', '--graph-node-2', '--graph-node-3', '--graph-node-4'];
   let h = DATA.clusters.map(c =>
     '<div class="row"><span class="dot" style="background:var(' + SC[c[2]] + ')"></span>'
     + '<span>' + esc(c[0]) + '</span><span class="n">' + c[1] + '</span></div>').join('');
@@ -397,6 +441,10 @@ addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
     + '<div class="row"><span class="seg"></span><span>跨簇的桥</span></div>'
     + '<div class="row"><span class="seg" style="border-top-style:solid;border-top-width:3px">'
     + '</span><span>互相引用</span></div>';
+  if (N.some(n => n.ghost)) {
+    h += '<div class="row"><span class="ring" style="border-style:dashed;'
+      + 'border-color:var(--graph-node-unresolved)"></span><span>还没写的片段</span></div>';
+  }
   if (DATA.clusters.length > 3) {
     h += '<hr><div class="note">第 4 个起的簇共用中性灰：三色是 CVD 全配对'
       + '能通过的上限，身份靠节点标签和簇名区分。</div>';
