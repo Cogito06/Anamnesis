@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="zh"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cairn 知识图谱</title>
+<style>
+:root{
+  color-scheme:light;
+  --surface:#fcfcfb; --panel:#ffffff; --line:rgba(0,0,0,.10);
+  --ink:#1a1a19; --ink-2:#5e5d59; --ink-3:#8a8880;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#8a8880;
+  --edge:rgba(0,0,0,.24); --bridge:#5e5d59;
+}
+@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])){
+  color-scheme:dark;
+  --surface:#1a1a19; --panel:#232322; --line:rgba(255,255,255,.14);
+  --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8a8880;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#8a8880;
+  --edge:rgba(255,255,255,.28); --bridge:#c3c2b7;
+}}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --surface:#1a1a19; --panel:#232322; --line:rgba(255,255,255,.14);
+  --ink:#ffffff; --ink-2:#c3c2b7; --ink-3:#8a8880;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#8a8880;
+  --edge:rgba(255,255,255,.28); --bridge:#c3c2b7;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--surface);color:var(--ink);overflow:hidden;
+  font:14px/1.55 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+canvas{display:block;cursor:grab}
+canvas.drag{cursor:grabbing}
+
+.bar{position:fixed;top:0;left:0;right:0;z-index:3;display:flex;gap:10px;align-items:center;
+  padding:10px 14px;background:color-mix(in srgb,var(--surface) 88%,transparent);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.bar h1{margin:0;font-size:14px;font-weight:650;letter-spacing:.01em}
+.bar .sub{color:var(--ink-3);font-size:12px}
+.bar .sp{flex:1}
+input,button{font:inherit;color:var(--ink);background:var(--panel);
+  border:1px solid var(--line);border-radius:7px;padding:5px 10px}
+input{width:190px}
+input::placeholder{color:var(--ink-3)}
+button{cursor:pointer}
+button:hover{border-color:var(--ink-3)}
+
+.legend{position:fixed;left:14px;bottom:14px;z-index:3;background:var(--panel);
+  border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12px;
+  max-width:270px}
+.legend .row{display:flex;align-items:center;gap:8px;margin:4px 0}
+.legend .dot{width:10px;height:10px;border-radius:50%;flex:none}
+.legend .ring{width:12px;height:12px;border-radius:50%;flex:none;
+  border:2px solid var(--ink-2);background:transparent}
+.legend .seg{width:22px;height:0;flex:none;border-top:2px dashed var(--bridge)}
+.legend .n{color:var(--ink-3);margin-left:auto}
+.legend hr{border:0;border-top:1px solid var(--line);margin:8px 0}
+.legend .note{color:var(--ink-3);line-height:1.45}
+
+.panel{position:fixed;top:52px;right:14px;bottom:14px;width:330px;z-index:3;overflow:auto;
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+.panel[hidden]{display:none!important}
+.panel h2{margin:0 0 2px;font-size:15px;line-height:1.35;word-break:break-all}
+.panel .meta{color:var(--ink-3);font-size:12px;margin-bottom:12px}
+.panel h3{margin:16px 0 5px;font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:650}
+.panel p{margin:0;color:var(--ink-2)}
+.panel .hook{color:var(--ink)}
+.panel ul{margin:0;padding-left:17px;color:var(--ink-2)}
+.panel li{margin:3px 0;word-break:break-word}
+.panel .tags{display:flex;flex-wrap:wrap;gap:5px}
+.panel .tag{font-size:11px;padding:2px 7px;border:1px solid var(--line);border-radius:20px;
+  color:var(--ink-2)}
+.panel .lnk{color:var(--ink);cursor:pointer;text-decoration:underline;
+  text-underline-offset:2px;text-decoration-color:var(--ink-3)}
+.panel .close{position:absolute;top:10px;right:12px;padding:2px 8px;font-size:13px}
+.hint{position:fixed;right:14px;bottom:14px;z-index:2;color:var(--ink-3);font-size:12px;
+  transition:opacity 1.2s}
+@media (max-width:900px){ .panel{width:auto;left:14px} }
+</style></head><body>
+
+<div class="bar">
+  <h1>Cairn 知识图谱</h1><span class="sub" id="sub"></span>
+  <span class="sp"></span>
+  <input id="q" placeholder="搜索片段 / 概念…" autocomplete="off">
+  <button id="fit">重置视图</button>
+  <button id="theme">明暗</button>
+</div>
+<canvas id="c"></canvas>
+<div class="legend" id="legend"></div>
+<aside class="panel" id="panel" hidden></aside>
+<div class="hint" id="hint">滚轮缩放 · 拖拽平移 · 点节点看详情</div>
+
+<script>
+const DATA = /*__DATA__*/;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const N = DATA.nodes, E = DATA.edges;
+const byId = Object.fromEntries(N.map(n => [n.id, n]));
+E.forEach(e => { e.S = byId[e.s]; e.T = byId[e.t]; });
+
+const nbr = {};
+N.forEach(n => { nbr[n.id] = new Set(); });
+E.forEach(e => { nbr[e.s].add(e.t); nbr[e.t].add(e.s); });
+
+document.getElementById('sub').textContent =
+  DATA.repo + ' · ' + N.length + ' 个片段 · ' + E.length + ' 条链接 · '
+  + E.filter(e => e.bridge).length + ' 条跨簇的桥';
+
+/* ---------- 布局 ----------
+   简单的 Fruchterman–Reingold。节点数是几十量级，O(n²) 斥力足够；
+   上 Barnes–Hut 属于为不存在的规模做优化。 */
+const R = Math.max(260, Math.sqrt(N.length) * 130);
+N.forEach((n, i) => {
+  const a = i * 2.399963;                 // 黄金角散布，避免初始对称造成的死锁
+  const rad = R * 0.5 * Math.sqrt(i / N.length + 0.15);
+  n.x = Math.cos(a) * rad; n.y = Math.sin(a) * rad;
+  n.vx = 0; n.vy = 0;
+  n.r = 5 + Math.min(9, Math.sqrt(n.deg) * 3.4);
+});
+const K = R / Math.sqrt(Math.max(N.length, 2));
+let heat = 1, dragging = null;
+
+function step() {
+  for (const n of N) { n.fx = 0; n.fy = 0; }
+  for (let i = 0; i < N.length; i++) {
+    for (let j = i + 1; j < N.length; j++) {
+      const a = N[i], b = N[j];
+      const dx = a.x - b.x, dy = a.y - b.y;
+      const d2 = dx * dx + dy * dy || 0.01, d = Math.sqrt(d2);
+      const f = (K * K) / d2 * 1.15, ux = dx / d, uy = dy / d;
+      a.fx += ux * f * K; a.fy += uy * f * K;
+      b.fx -= ux * f * K; b.fy -= uy * f * K;
+    }
+  }
+  for (const e of E) {
+    const a = e.S, b = e.T;
+    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
+    const f = (d * d) / K * 0.0016, ux = dx / d, uy = dy / d;
+    a.fx += ux * f; a.fy += uy * f; b.fx -= ux * f; b.fy -= uy * f;
+  }
+  // 同簇之间一点弱吸引，让板块在空间上聚成团——这正是图比索引多出来的那层信息
+  const cen = centroids();
+  for (const n of N) {
+    const c = cen[n.cluster];
+    n.fx += (c.x - n.x) * 0.012; n.fy += (c.y - n.y) * 0.012;
+    n.fx -= n.x * 0.0022;        n.fy -= n.y * 0.0022;   // 轻微向心，防飘走
+  }
+  for (const n of N) {
+    if (n === dragging) continue;
+    n.vx = (n.vx + n.fx) * 0.82; n.vy = (n.vy + n.fy) * 0.82;
+    const sp = Math.hypot(n.vx, n.vy), cap = 26 * heat;
+    if (sp > cap) { n.vx = n.vx / sp * cap; n.vy = n.vy / sp * cap; }
+    n.x += n.vx; n.y += n.vy;
+  }
+  heat = Math.max(0.06, heat * 0.994);
+}
+function centroids() {
+  const c = {};
+  for (const n of N) {
+    if (!c[n.cluster]) c[n.cluster] = { x: 0, y: 0, k: 0, slot: n.slot };
+    c[n.cluster].x += n.x; c[n.cluster].y += n.y; c[n.cluster].k++;
+  }
+  for (const k in c) { c[k].x /= c[k].k; c[k].y /= c[k].k; }
+  return c;
+}
+
+/* ---------- 视图 ---------- */
+let scale = 1, ox = 0, oy = 0, W = 0, H = 0;
+function resize() {
+  const d = devicePixelRatio || 1;
+  W = innerWidth; H = innerHeight;
+  cv.width = W * d; cv.height = H * d;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+}
+function fit() {
+  const xs = N.map(n => n.x), ys = N.map(n => n.y);
+  const minx = Math.min(...xs), maxx = Math.max(...xs);
+  const miny = Math.min(...ys), maxy = Math.max(...ys);
+  // 留出节点半径、节点标签和簇名标签的空间，否则边缘的节点会被切掉
+  const w = maxx - minx + 260, h = maxy - miny + 190;
+  // 面板没开就用整个宽度——之前无条件预留面板宽度，右侧空一大片
+  const panelOpen = !panel.hidden && W > 900;
+  const left = 24, right = panelOpen ? 372 : 24;
+  const top = 64, bottom = 34;
+  const availW = Math.max(240, W - left - right);
+  const availH = Math.max(240, H - top - bottom);
+  scale = Math.max(0.3, Math.min(1.8, Math.min(availW / w, availH / h)));
+  ox = left + availW / 2 - (minx + maxx) / 2 * scale;
+  oy = top + availH / 2 - (miny + maxy) / 2 * scale;
+}
+const sx = n => n.x * scale + ox;
+const sy = n => n.y * scale + oy;
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+let hover = null, picked = null, query = '', userMoved = false;
+function matches(n) {
+  const q = query.toLowerCase();
+  if (!q) return true;
+  return n.id.toLowerCase().indexOf(q) >= 0
+      || (n.hook || '').toLowerCase().indexOf(q) >= 0
+      || n.cluster.toLowerCase().indexOf(q) >= 0
+      || n.concepts.some(c => String(c).toLowerCase().indexOf(q) >= 0);
+}
+function lit(n) {
+  if (query) return matches(n);
+  const f = hover || picked;
+  if (!f) return true;
+  return n.id === f.id || nbr[f.id].has(n.id);
+}
+
+function draw() {
+  const SC = [css('--s1'), css('--s2'), css('--s3'), css('--s4')];
+  const INK = css('--ink'), INK2 = css('--ink-2'), INK3 = css('--ink-3');
+  ctx.clearRect(0, 0, W, H);
+
+  for (const e of E) {
+    const on = lit(e.S) && lit(e.T);
+    ctx.save();
+    ctx.globalAlpha = on ? (e.bridge ? 0.95 : 0.7) : 0.08;
+    ctx.strokeStyle = e.bridge ? css('--bridge') : css('--edge');
+    ctx.lineWidth = (e.bridge ? 2 : 1.2) * (e.mutual ? 1.7 : 1);
+    if (e.bridge) ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(sx(e.S), sy(e.S)); ctx.lineTo(sx(e.T), sy(e.T));
+    ctx.stroke(); ctx.restore();
+  }
+
+  // 簇名压在簇的包围盒上沿，不是质心减一个固定偏移——簇一拉长，
+  // 固定偏移就会把标签丢进簇内部，正好压在节点和连线上。
+  const box = {};
+  for (const n of N) {
+    const b = box[n.cluster] ||= { x0: 1e9, x1: -1e9, y0: 1e9, k: 0 };
+    b.x0 = Math.min(b.x0, n.x); b.x1 = Math.max(b.x1, n.x);
+    b.y0 = Math.min(b.y0, n.y); b.k++;
+  }
+  ctx.textAlign = 'center';
+  for (const name in box) {
+    const b = box[name];
+    if (b.k < 2) continue;
+    ctx.save();
+    ctx.globalAlpha = (hover || picked || query) ? 0.3 : 0.8;
+    ctx.fillStyle = INK3; ctx.font = '600 12px system-ui,sans-serif';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(name, (b.x0 + b.x1) / 2 * scale + ox, b.y0 * scale + oy - 22);
+    ctx.restore();
+  }
+
+  for (const n of N) {
+    const x = sx(n), y = sy(n);
+    const r = n.r * Math.max(0.7, Math.min(1.4, scale));
+    const on = lit(n);
+    ctx.save(); ctx.globalAlpha = on ? 1 : 0.16;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832);
+    ctx.fillStyle = SC[n.slot]; ctx.fill();
+    // 未解决问题用圆环 + 数字表示，不占用颜色通道（颜色留给簇）
+    if (n.open.length) {
+      ctx.beginPath(); ctx.arc(x, y, r + 4, 0, 6.2832);
+      ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = INK; ctx.font = '700 10px system-ui,sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(n.open.length), x, y - r - 11);
+    }
+    if (picked && picked.id === n.id) {
+      ctx.beginPath(); ctx.arc(x, y, r + 9, 0, 6.2832);
+      ctx.strokeStyle = INK; ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 3]); ctx.stroke();
+    }
+    ctx.restore();
+    ctx.save(); ctx.globalAlpha = on ? 0.95 : 0.12;
+    ctx.fillStyle = INK2; ctx.font = '11px system-ui,sans-serif';
+    ctx.textBaseline = 'top';
+    ctx.fillText(n.id, x, y + r + 5);
+    ctx.restore();
+  }
+}
+
+let frozen = false;
+function loop() {
+  if (!frozen) {
+    step();
+    // 仿真还在动的时候持续跟随取景：否则 fit() 一算完节点就漂走，
+    // 视图停在过期的框上（表现为图偏向一侧、另一侧空一大片）。
+    // 用户一旦自己动过视图，控制权就交还给他。
+    if (!userMoved) fit();
+    // 降到阈值就彻底停：heat 有下限，不显式冻结的话节点会永远微漂，
+    // 取景框永远对不准，而且白白占着 CPU。
+    if (heat <= 0.075 && !dragging) frozen = true;
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+function thaw(h) { frozen = false; heat = Math.max(heat, h); }
+
+/* ---------- 交互 ---------- */
+function at(mx, my) {
+  let best = null, bd = 1e9;
+  for (const n of N) {
+    const d = Math.hypot(mx - sx(n), my - sy(n));
+    if (d < n.r * scale + 11 && d < bd) { bd = d; best = n; }
+  }
+  return best;
+}
+let pan = null, moved = false, downAt = null;
+const DRAG_PX = 4;   // 小于这个位移仍算点击——手抖和工具点击都会带 1px 移动
+cv.addEventListener('mousedown', ev => {
+  moved = false; downAt = [ev.clientX, ev.clientY];
+  const n = at(ev.clientX, ev.clientY);
+  if (n) { dragging = n; thaw(0.5); userMoved = true; }
+  else { pan = [ev.clientX - ox, ev.clientY - oy]; cv.classList.add('drag'); }
+});
+addEventListener('mousemove', ev => {
+  if (dragging) {
+    if (downAt && Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > DRAG_PX) moved = true;
+    dragging.x = (ev.clientX - ox) / scale; dragging.y = (ev.clientY - oy) / scale;
+    dragging.vx = 0; dragging.vy = 0; return;
+  }
+  if (pan) {
+    if (downAt && Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > DRAG_PX) {
+      moved = true; userMoved = true;
+    }
+    ox = ev.clientX - pan[0]; oy = ev.clientY - pan[1]; return;
+  }
+  hover = at(ev.clientX, ev.clientY);
+  cv.style.cursor = hover ? 'pointer' : 'grab';
+});
+addEventListener('mouseup', () => {
+  if (pan) cv.classList.remove('drag');
+  dragging = null; pan = null;
+});
+cv.addEventListener('click', ev => {
+  if (moved) return;
+  const n = at(ev.clientX, ev.clientY);
+  if (n) show(n); else hide();
+});
+cv.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  const k = Math.exp(-ev.deltaY * 0.0013);
+  const ns = Math.max(0.25, Math.min(4, scale * k));
+  ox = ev.clientX - (ev.clientX - ox) * (ns / scale);
+  oy = ev.clientY - (ev.clientY - oy) * (ns / scale);
+  scale = ns; userMoved = true;
+}, { passive: false });
+
+const panel = document.getElementById('panel');
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+function show(n) {
+  picked = n;
+  const links = Array.from(nbr[n.id]);
+  let h = '<button class="close" id="x">✕</button>'
+    + '<h2>' + esc(n.id) + '</h2>'
+    + '<div class="meta">' + esc(n.cluster) + ' · ' + esc(n.date || '')
+    + ' · ' + links.length + ' 条链接</div>'
+    + '<h3>钩子</h3><p class="hook">' + esc(n.hook || '（缺 hook 字段）') + '</p>';
+  if (n.open.length) {
+    h += '<h3>未解决（' + n.open.length + '）</h3><ul>'
+      + n.open.map(o => '<li>' + esc(o) + '</li>').join('') + '</ul>';
+  }
+  h += '<h3>概念</h3><div class="tags">'
+    + n.concepts.map(c => '<span class="tag">' + esc(c) + '</span>').join('') + '</div>';
+  if (n.refs.length) {
+    h += '<h3>材料</h3><ul>' + n.refs.map(r => '<li>' + esc(r) + '</li>').join('') + '</ul>';
+  }
+  if (links.length) {
+    h += '<h3>链接到</h3><ul>' + links.map(l =>
+      '<li><span class="lnk" data-go="' + esc(l) + '">' + esc(l) + '</span></li>').join('') + '</ul>';
+  }
+  panel.innerHTML = h;
+  const wasHidden = panel.hidden;
+  panel.hidden = false;
+  if (wasHidden) fit();
+  panel.querySelector('#x').onclick = hide;
+  panel.querySelectorAll('[data-go]').forEach(el => {
+    el.onclick = () => show(byId[el.dataset.go]);
+  });
+}
+function hide() { picked = null; if (!panel.hidden) { panel.hidden = true; fit(); } }
+
+document.getElementById('q').addEventListener('input', e => { query = e.target.value.trim(); });
+document.getElementById('fit').onclick = () => { thaw(0.8); userMoved = false; fit(); };
+document.getElementById('theme').onclick = () => {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const dark = cur ? cur === 'dark' : matchMedia('(prefers-color-scheme:dark)').matches;
+  document.documentElement.setAttribute('data-theme', dark ? 'light' : 'dark');
+};
+addEventListener('keydown', e => { if (e.key === 'Escape') hide(); });
+
+/* ---------- 图例 ---------- */
+(function () {
+  const SC = ['--s1', '--s2', '--s3', '--s4'];
+  let h = DATA.clusters.map(c =>
+    '<div class="row"><span class="dot" style="background:var(' + SC[c[2]] + ')"></span>'
+    + '<span>' + esc(c[0]) + '</span><span class="n">' + c[1] + '</span></div>').join('');
+  h += '<hr><div class="row"><span class="ring"></span><span>有未解决问题</span></div>'
+    + '<div class="row"><span class="seg"></span><span>跨簇的桥</span></div>'
+    + '<div class="row"><span class="seg" style="border-top-style:solid;border-top-width:3px">'
+    + '</span><span>互相引用</span></div>';
+  if (DATA.clusters.length > 3) {
+    h += '<hr><div class="note">第 4 个起的簇共用中性灰：三色是 CVD 全配对'
+      + '能通过的上限，身份靠节点标签和簇名区分。</div>';
+  }
+  document.getElementById('legend').innerHTML = h;
+})();
+
+addEventListener('resize', () => { resize(); fit(); });
+resize();
+for (let i = 0; i < 280; i++) step();     // 先跑一段，打开时已经成形
+fit(); loop();
+setTimeout(() => { document.getElementById('hint').style.opacity = 0; }, 6000);
+</script></body></html>
