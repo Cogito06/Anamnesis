@@ -1,11 +1,10 @@
 ---
-id: YYYY-MM-DD-short-slug
-course: <课程或学科标识，如 math-physics / cs61b>
-concepts: [中文术语, English term]
+course: <课程或学科标识，如 cs170 / math-physics>
+date: 2026-09-15
+concepts: [主概念, Main Concept, 专有名词, 次要词, 泛化类别词]
 hook: <一句话钩子。索引里就显示这句，它决定未来的 agent 要不要展开读这个片段>
 refs:
-  - <指向仓库内的课程材料，如 slides/Lecture 9.pdf 或 hw/hw03.md#p2>
-status: open        # open | resolved
+  - <指向仓库内的课程材料，如 slides/lec-1_full.pdf 或 hw/hw03.md#p2>
 ---
 
 ## 触发
@@ -14,11 +13,21 @@ status: open        # open | resolved
 ## 卡点 / 误解
 （全文价值最高的一段。写清楚错误的想法本身，不只是正确答案。
   「我原以为 X，因为 Y；实际不是，真正的原因是 Z」这种结构最有用。
-  有反例就写下来。）
+
+  **判决性实例内嵌在这里**——就是那个杀死误解的具体例子。不要单开一节，
+  它是这个论断的证据，挂在论断底下结构才诚实：
+
+      27 → 13 → 6 → 3 → 1 → 0           5 轮，不是 log 5 轮
+      11011 → 1101 → 110 → 11 → 1 → 0   每次掉一个 bit
+）
 
 ## 关键 insight
 （书上没直接写的那个连接。跨章节、跨学科的类比放这里。
-  如果这一段写不出东西，考虑这个片段是不是根本不该存。）
+  如果这一段写不出东西，考虑这个片段是不是根本不该存。
+
+  相关的片段用 [[slug]] 内嵌引用，写在提到它的那句话旁边，
+  例如：真正的突破要等分治，见 [[change-model-vs-change-algorithm]]。）
 
 ## 遗留问题
-- [ ] （用 - [ ] 前缀，rebuild_index.py 靠它统计 open 数，SessionStart hook 靠它捞进新会话）
+- [ ] （用 - [ ] 前缀。rebuild_index.py 靠它统计 open 数，
+       SessionStart hook 靠它把未解决问题捞进每一个新会话）
