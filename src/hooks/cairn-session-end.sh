@@ -15,5 +15,5 @@ stamp="$CAIRN_STATE/$sid.stamp"
 if [ -z "$(find "$cwd/$CAIRN_DIR/fragments" -name '*.md' -newer "$stamp" 2>/dev/null)" ]; then
   echo '{"systemMessage": "[Anamnesis] 本次会话结束，没有片段落盘。如果聊出了值得留的东西，下次开会话时还能从 transcript 里捞 —— 但不如现在记得清楚。"}'
 fi
-rm -f "$stamp" 2>/dev/null
+rm -f "$stamp" "$CAIRN_STATE/$sid.blocked" 2>/dev/null
 exit 0
