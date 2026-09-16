@@ -1,0 +1,26 @@
+Anamnesis —— 给 Claude Code 装一层跨会话的学习记忆
+Copyright (C) 2026 Cogito06
+
+本程序是自由软件：你可以依据自由软件基金会发布的 GNU 通用公共许可证
+（第 3 版，或你选择的任何更新版本）的条款重新分发和/或修改它。
+
+分发本程序是希望它有用，但**不作任何担保**，甚至不含对适销性或
+特定用途适用性的默示担保。详见 GNU 通用公共许可证。
+
+你应当已随本程序收到一份 GNU 通用公共许可证（见 LICENSE）。
+如果没有，请查阅 <https://www.gnu.org/licenses/>。
+
+---
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version.
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+General Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with this program (see LICENSE).  If not, see <https://www.gnu.org/licenses/>.
